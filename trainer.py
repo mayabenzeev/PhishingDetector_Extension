@@ -103,6 +103,27 @@ for k in k_options:
 
 print(f"\nBest k found: {best_k} with accuracy: {best_score:.4f}")
 
+kf = StratifiedKFold(n_splits=best_k, shuffle=True, random_state=42)
+thresholds = np.linspace(0.1, 0.9, 50)
+f1_scores_per_threshold = []
+
+for t in thresholds:
+    f1s = []
+    for train_idx, val_idx in kf.split(X_selected, y):
+        X_train, X_val = X_selected[train_idx], X_selected[val_idx]
+        y_train, y_val = y.iloc[train_idx], y.iloc[val_idx]
+
+        model = LogisticRegression()
+        model.fit(X_train, y_train)
+        probs = model.predict_proba(X_val)[:, 1]
+        preds = (probs >= t).astype(int)
+        f1 = f1_score(y_val, preds)
+        f1s.append(f1)
+    f1_scores_per_threshold.append(np.mean(f1s))
+
+# Best threshold
+best_threshold = thresholds[np.argmax(f1_scores_per_threshold)]
+print(f"Best threshold for max F1: {best_threshold:.3f}")
 
 # Final training on the selected features
 X_train, X_test, y_train, y_test = train_test_split(X_selected, y, test_size=0.2, random_state=42)
