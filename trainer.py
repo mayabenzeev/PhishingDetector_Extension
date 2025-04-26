@@ -8,7 +8,7 @@ from sklearn.metrics import classification_report, confusion_matrix
 from sklearn.preprocessing import RobustScaler
 from sklearn.feature_selection import RFE
 from sklearn.metrics import precision_score, recall_score, f1_score
-
+import time
 import numpy as np
 
 # --- Load phishing URLs from local PhishTank CSV file ---
@@ -50,7 +50,21 @@ def extract_features(url):
         return -sum((f / length) * math.log2(f / length) for f in counts.values())
     
     raw_entropy = entropy(hostname)
-    entropy_binary = 1 if raw_entropy > 3.9 else 0  # Binary conversion
+
+    # Subdomain length
+    parts = hostname.split('.')
+    subdomain_length = sum(len(part) for part in parts[:-2]) if len(parts) >= 3 else 0
+    
+    # Free hosting provider check
+    free_hosting_providers = [
+        "000webhost", "freehostia", "neocities", "wordpress",
+        "blogspot", "netlify", "weebly", "github", "weeblysite"
+    ]
+    domain = parts[-2].lower() if len(parts) >= 2 else ''
+    is_free_hosting = int(domain in free_hosting_providers)
+
+    # Hyphen presence in URL segments
+    has_hyphen = int('-' in hostname)
 
     return {
         'url_length': len(full_url),
@@ -59,14 +73,17 @@ def extract_features(url):
         'special_char_count': sum(full_url.count(ch) for ch in specials),
         'entropy': raw_entropy,
         'suspicious_keywords': sum(kw in full_url for kw in keywords),
-        'subdomain_length': sum(len(part) for part in hostname.split('.')[:-2]) if hostname.count('.') >= 2 else 0,
-        'is_ip': bool(re.match(r'^\d{1,3}(\.\d{1,3}){3}$', hostname))
+        'subdomain_length': subdomain_length,
+        'is_ip': bool(re.match(r'^\d{1,3}(\.\d{1,3}){3}$', hostname)),
+        'is_free_hosting': is_free_hosting,
+        'has_hyphen': has_hyphen
     }
 
 # Build dataframe
 features = [extract_features(url) for url in urls]
 df = pd.DataFrame(features)
 df['label'] = labels
+df = df.sample(frac=1, random_state=42).reset_index(drop=True)
 
 X = df.drop("label", axis=1)
 y = df["label"]
@@ -78,12 +95,15 @@ X_scaled = scaler.fit_transform(X)
 # RFE for feature selection - Recursive Feature Elimination
 print("\nPerforming Recursive Feature Elimination (RFE)...")
 model = LogisticRegression()
-rfe = RFE(model, n_features_to_select=5)
+rfe = RFE(model, n_features_to_select=6)
 fit = rfe.fit(X_scaled, y)
-print("RFE-selected:", X.columns[fit.support_])
+selected_mask = fit.support_
+selected_features = X.columns[fit.support_]
+print("RFE-selected:", selected_features)
 
-# choose the best features
-X_selected = X_scaled[:, fit.support_]
+# Filter features from original X and rescale
+X_selected = X[selected_features]
+
 
 # Cross-validation with multiple k values
 print("\nEvaluating model with k-fold cross-validation:")
@@ -107,10 +127,11 @@ kf = StratifiedKFold(n_splits=best_k, shuffle=True, random_state=42)
 thresholds = np.linspace(0.1, 0.9, 50)
 f1_scores_per_threshold = []
 
+print (f"Started looking for thresholds - {time.strftime('%H:%M:%S', time.localtime())}")
 for t in thresholds:
     f1s = []
     for train_idx, val_idx in kf.split(X_selected, y):
-        X_train, X_val = X_selected[train_idx], X_selected[val_idx]
+        X_train, X_val = X_selected.iloc[train_idx], X_selected.iloc[val_idx]
         y_train, y_val = y.iloc[train_idx], y.iloc[val_idx]
 
         model = LogisticRegression()
@@ -139,7 +160,7 @@ y_probs = final_model.predict_proba(X_test)[:, 1]  # סיכוי לפישינג
 # Export model weights
 print("\nJavaScript-ready weights:")
 print("const weights = {")
-for name, coef in zip(X.columns, final_model.coef_[0]):
+for name, coef in zip(X_selected.columns, final_model.coef_[0]):
     print(f"  {name}: {coef:.4f},")
 print("};")
 print(f"const bias = {final_model.intercept_[0]:.4f};")
