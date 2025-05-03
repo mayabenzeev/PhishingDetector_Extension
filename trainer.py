@@ -2,7 +2,8 @@ import pandas as pd
 import math
 import re
 from urllib.parse import urlparse
-from sklearn.linear_model import LogisticRegression
+# from sklearn.linear_model import LogisticRegression
+from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import StratifiedKFold, cross_val_score, train_test_split
 from sklearn.metrics import classification_report, confusion_matrix
 from sklearn.preprocessing import RobustScaler
@@ -93,16 +94,16 @@ scaler = RobustScaler()
 X_scaled = scaler.fit_transform(X)
 
 # RFE for feature selection - Recursive Feature Elimination
-print("\nPerforming Recursive Feature Elimination (RFE)...")
-model = LogisticRegression()
-rfe = RFE(model, n_features_to_select=6)
-fit = rfe.fit(X_scaled, y)
-selected_mask = fit.support_
-selected_features = X.columns[fit.support_]
-print("RFE-selected:", selected_features)
+# print("\nPerforming Recursive Feature Elimination (RFE)...")
+# model = LogisticRegression()
+# rfe = RFE(model, n_features_to_select=6)
+# fit = rfe.fit(X_scaled, y)
+# selected_mask = fit.support_
+# selected_features = X.columns[fit.support_]
+# print("RFE-selected:", selected_features)
 
 # Filter features from original X and rescale
-X_selected = X[selected_features]
+X_selected = X
 
 
 # Cross-validation with multiple k values
@@ -113,7 +114,8 @@ best_score = 0
 
 for k in k_options:
     skf = StratifiedKFold(n_splits=k, shuffle=True, random_state=42)
-    model = LogisticRegression()
+    model = RandomForestClassifier(n_estimators=100, max_depth=10, random_state=42)
+
     scores = cross_val_score(model, X_selected, y, cv=skf, scoring='accuracy')
     mean_score = scores.mean()
     print(f"k={k} | Mean Accuracy: {mean_score:.4f}")
@@ -134,7 +136,7 @@ for t in thresholds:
         X_train, X_val = X_selected.iloc[train_idx], X_selected.iloc[val_idx]
         y_train, y_val = y.iloc[train_idx], y.iloc[val_idx]
 
-        model = LogisticRegression()
+        model = RandomForestClassifier(n_estimators=100, max_depth=10, random_state=42)
         model.fit(X_train, y_train)
         probs = model.predict_proba(X_val)[:, 1]
         preds = (probs >= t).astype(int)
@@ -149,7 +151,7 @@ print(f"Best threshold for max F1: {best_threshold:.3f}")
 # Final training on the selected features
 X_train, X_test, y_train, y_test = train_test_split(X_selected, y, test_size=0.2, random_state=42)
 
-final_model = LogisticRegression()
+final_model = RandomForestClassifier(n_estimators=100, max_depth=10, random_state=42)
 final_model.fit(X_train, y_train)
 y_pred = final_model.predict(X_test)
 
