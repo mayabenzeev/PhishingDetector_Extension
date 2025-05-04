@@ -15,11 +15,28 @@ const http = require('http');
  */
 async function normalizeUrl(raw) {
   if (!raw || typeof raw !== 'string') return null;
-  const cleaned = raw.trim().replace(/^https?:\/\//i, '');
+
+  const cleaned = raw.trim();
 
   const options = { method: 'HEAD', timeout: 5000 };
 
-  return new Promise(resolve => {
+  // Try full URL if it looks valid
+  if (/^https?:\/\//i.test(cleaned)) {
+    try {
+      const urlObj = new URL(cleaned); // sanity check
+      const proto = urlObj.protocol === 'https:' ? https : http;
+      return await new Promise(resolve => {
+        const req = proto.request(cleaned, options, () => resolve(cleaned));
+        req.on('error', () => resolve(null));
+        req.end();
+      });
+    } catch {
+      return null;
+    }
+  }
+
+  // Try HTTPS then HTTP if it's just a hostname
+  return await new Promise(resolve => {
     https.request(`https://${cleaned}`, options, res => {
       resolve(`https://${cleaned}`);
     }).on('error', () => {
@@ -32,16 +49,6 @@ async function normalizeUrl(raw) {
   });
 }
 
-// Read URLs from a CSV (column named "url")
-function readUrlsFromCsv(csvPath) {
-  return new Promise(resolve => {
-    const urls = [];
-    fs.createReadStream(csvPath)
-      .pipe(csv())
-      .on('data', row => urls.push(row.url))
-      .on('end', () => resolve(urls));
-  });
-}
 
 // Random sample of size n
 function sampleSize(arr, n) {
@@ -265,19 +272,35 @@ async function extractDynamicFeatures(rawUrl) {
   fs.writeFileSync(outFile, header + '\n');
 
   // Write each row
-  for (const {url, label} of entries) {
-    try {
-      const nurl = await normalizeUrl(url);
-      if (!nurl) continue;
-      const stat = extractStaticFeatures(nurl);
-      const dyn  = await extractDynamicFeatures(nurl);
-      const row  = Object.values(stat)
-        .concat(Object.values(dyn), [label])
-        .join(',');
-      fs.appendFileSync(outFile, row + '\n');
-      console.log(`✅ ${label} – ${nurl}`);
-    } catch (e) {
-      console.error(`❌ ${url} — ${e.message}`);
+  const concurrency = 5;  // Try 5-10 depending on your system
+  for (let i = 0; i < entries.length; i += concurrency) {
+    const batch = entries.slice(i, i + concurrency);
+    const results = await Promise.allSettled(batch.map(async ({ url, label }) => {
+      try {
+        const nurl = await normalizeUrl(url);
+        if (!nurl) throw new Error('Invalid normalized URL');
+
+        const stat = extractStaticFeatures(nurl);
+        const dyn = await extractDynamicFeatures(nurl);
+        const row = Object.values(stat)
+          .concat(Object.values(dyn), [label])
+          .join(',');
+        return row;
+      } catch (e) {
+        console.error(`❌ ${url} — ${e.message}`);
+        return null;
+      }
+    }));
+
+    if ((i + 1) % 100 === 0) {
+      console.log(`📦 Processed ${i + 1} samples...`);
+    }
+
+    for (const result of results) {
+      if (result.status === 'fulfilled' && result.value) {
+        fs.appendFileSync(outFile, result.value + '\n');
+      }
     }
   }
+
 })();
