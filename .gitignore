@@ -1,2 +1,7 @@
-SimpleExtension/datasets/
-SimpleExtension/datasets/
+datasets/
+node_modules/
+package-lock.json
+package.json
+.ipynb_checkpoints/
+.DS_Store
+SimpleExtension/.DS_Store
