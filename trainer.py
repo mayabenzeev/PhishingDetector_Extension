@@ -15,7 +15,7 @@ import numpy as np
 # --- Load phishing URLs from local PhishTank CSV file ---
 print("Loading phishing URLs from local file 'phishtank.csv'...")
 try:
-    df_phish = pd.read_csv("SimpleExtension/datasets/verified_online.csv")
+    df_phish = pd.read_csv("../../datasets/phishing.csv")
     print(len(df_phish))
     phishing_urls = df_phish['url'].dropna().sample(n=10000, random_state=42).tolist()
 except Exception as e:
@@ -25,7 +25,7 @@ except Exception as e:
 # --- Load benign URLs from Tranco top sites ---
 print("Downloading top domains from Tranco...")
 try:
-    tranco_raw = pd.read_csv('SimpleExtension/datasets/top-1m.csv', header=None, names=['rank', 'domain'])
+    tranco_raw = pd.read_csv('../../datasets/benign.csv', header=None, names=['rank', 'domain'])
     benign_urls = ['https://' + d for d in tranco_raw['domain'].sample(n=10000, random_state=42)]
 except Exception as e:
     print("Failed to download Tranco list:", e)
@@ -89,19 +89,6 @@ df = df.sample(frac=1, random_state=42).reset_index(drop=True)
 X = df.drop("label", axis=1)
 y = df["label"]
 
-# Normalize features - use RobustScaler to handle outliers
-scaler = RobustScaler()
-X_scaled = scaler.fit_transform(X)
-
-# RFE for feature selection - Recursive Feature Elimination
-# print("\nPerforming Recursive Feature Elimination (RFE)...")
-# model = LogisticRegression()
-# rfe = RFE(model, n_features_to_select=6)
-# fit = rfe.fit(X_scaled, y)
-# selected_mask = fit.support_
-# selected_features = X.columns[fit.support_]
-# print("RFE-selected:", selected_features)
-
 # Filter features from original X and rescale
 X_selected = X
 
@@ -126,27 +113,38 @@ for k in k_options:
 print(f"\nBest k found: {best_k} with accuracy: {best_score:.4f}")
 
 kf = StratifiedKFold(n_splits=best_k, shuffle=True, random_state=42)
+
+print(f"Started looking for thresholds - {time.strftime('%H:%M:%S', time.localtime())}")
+all_val_probs = []
+all_val_labels = []
+
+# train k-fold and save predictions
+for train_idx, val_idx in kf.split(X_selected, y):
+    X_train, X_val = X_selected.iloc[train_idx], X_selected.iloc[val_idx]
+    y_train, y_val = y.iloc[train_idx], y.iloc[val_idx]
+
+    model = RandomForestClassifier(n_estimators=100, max_depth=10, random_state=42)
+    model.fit(X_train, y_train)
+    probs = model.predict_proba(X_val)[:, 1]
+
+    all_val_probs.extend(probs)
+    all_val_labels.extend(y_val)
+
+# calculate F1 for every threshold
 thresholds = np.linspace(0.1, 0.9, 50)
 f1_scores_per_threshold = []
 
-print (f"Started looking for thresholds - {time.strftime('%H:%M:%S', time.localtime())}")
+all_val_probs = np.array(all_val_probs)
+all_val_labels = np.array(all_val_labels)
+
 for t in thresholds:
-    f1s = []
-    for train_idx, val_idx in kf.split(X_selected, y):
-        X_train, X_val = X_selected.iloc[train_idx], X_selected.iloc[val_idx]
-        y_train, y_val = y.iloc[train_idx], y.iloc[val_idx]
+    preds = (all_val_probs >= t).astype(int)
+    f1 = f1_score(all_val_labels, preds)
+    f1_scores_per_threshold.append(f1)
 
-        model = RandomForestClassifier(n_estimators=100, max_depth=10, random_state=42)
-        model.fit(X_train, y_train)
-        probs = model.predict_proba(X_val)[:, 1]
-        preds = (probs >= t).astype(int)
-        f1 = f1_score(y_val, preds)
-        f1s.append(f1)
-    f1_scores_per_threshold.append(np.mean(f1s))
-
-# Best threshold
 best_threshold = thresholds[np.argmax(f1_scores_per_threshold)]
 print(f"Best threshold for max F1: {best_threshold:.3f}")
+
 
 # Final training on the selected features
 X_train, X_test, y_train, y_test = train_test_split(X_selected, y, test_size=0.2, random_state=42)
@@ -158,14 +156,6 @@ y_pred = final_model.predict(X_test)
 # Classification report
 y_probs = final_model.predict_proba(X_test)[:, 1]  # סיכוי לפישינג
 
-
-# Export model weights
-print("\nJavaScript-ready weights:")
-print("const weights = {")
-for name, coef in zip(X_selected.columns, final_model.coef_[0]):
-    print(f"  {name}: {coef:.4f},")
-print("};")
-print(f"const bias = {final_model.intercept_[0]:.4f};")
 
 # Evaluate model performance
 print("\nEvaluating model performance...")
