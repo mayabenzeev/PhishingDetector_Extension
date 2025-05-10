@@ -9,7 +9,7 @@ from sklearn.metrics import (
 import joblib
 
 # 1. Load and prepare data
-df = pd.read_csv("../datasets/dyn_features.csv")
+df = pd.read_csv("../datasets/features.csv")
 df['label'] = df['label'].astype(int)             
 print("Label distribution:\n", df['label'].value_counts(), "\n")
 
