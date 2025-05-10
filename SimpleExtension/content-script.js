@@ -1,26 +1,23 @@
 // content-script.js (Random Forest only)
 let rfForest = null;
-const rfThreshold = 0.58; 
+const rfThreshold = 0.58; // Adjust based on training results
 
 // Load Random Forest JSON model
 async function loadForest() {
   if (rfForest) return; // already loaded
   const res = await fetch(chrome.runtime.getURL("rf_model.json"));
   rfForest = await res.json();
-  console.log(rfForest);
+  console.log("Model loaded with", rfForest.length, "trees");
 }
-
 
 function evalTree(tree, features) {
   if ("value" in tree) {
     return tree.value[1] > tree.value[0] ? 1 : 0;
   }
   const fVal = features[tree.feature];
-  if (fVal <= tree.threshold) {
-    return evalTree(tree.left, features);
-  } else {
-    return evalTree(tree.right, features);
-  }
+  return fVal <= tree.threshold
+    ? evalTree(tree.left, features)
+    : evalTree(tree.right, features);
 }
 
 function predictForest(features) {
@@ -29,22 +26,17 @@ function predictForest(features) {
   return voteSum / rfForest.length;
 }
 
-async function getPhishingPrediction() {
-  await loadForest();
-
-  const parsedUrl = new URL(window.location.href);
-  const hostname = parsedUrl.hostname;
-  const fullUrl = window.location.href.toLowerCase();
-
-  // Extract features (make sure these match model input names)
+function extractFeaturesFromPage() {
+  const url = window.location.href.toLowerCase();
+  const hostname = new URL(url).hostname;
   const specials = ['%', '-', '=', '&', ';'];
   const keywords = ['login', 'verify', 'secure', 'account', 'signin'];
 
-  const features = {
-    url_length: fullUrl.length,
+  const staticFeatures = {
+    url_length: url.length,
     dot_count: hostname.split('.').length,
-    special_char_count: specials.reduce((acc, ch) => acc + (fullUrl.split(ch).length - 1), 0),
-    suspicious_keywords: keywords.filter(k => fullUrl.includes(k)).length,
+    special_char_count: specials.reduce((acc, ch) => acc + (url.split(ch).length - 1), 0),
+    suspicious_keywords: keywords.filter(k => url.includes(k)).length,
     entropy: (() => {
       const counts = {};
       for (const char of hostname) {
@@ -55,9 +47,22 @@ async function getPhishingPrediction() {
         const p = count / len;
         return sum - p * Math.log2(p);
       }, 0);
-    })()
+    })(),
+    has_at: url.includes('@') ? 1 : 0,
+    subdomain_length: (() => {
+      const parts = hostname.split('.');
+      return parts.length >= 3 ? parts.slice(0, -2).join('.').length : 0;
+    })(),
+    has_hyphen: hostname.includes('-') ? 1 : 0,
+    is_ip: /^\d{1,3}(\.\d{1,3}){3}$/.test(hostname) ? 1 : 0
   };
 
+  return staticFeatures; // Dynamic features like eval count, etc., require deeper instrumentation
+}
+
+async function getPhishingPrediction() {
+  await loadForest();
+  const features = extractFeaturesFromPage();
   const probability = predictForest(features);
   const isPhishing = probability >= rfThreshold;
 
