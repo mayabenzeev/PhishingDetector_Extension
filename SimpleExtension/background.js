@@ -1,65 +1,66 @@
-let rfForest = null;
+import { loadModel } from './src/onnx.js';
+
+let session = null;
 const rfThreshold = 0.58;
-const cache = {};
+const cache = {}; // tabId → { probability, isPhishing }
 
-fetch(chrome.runtime.getURL("rf_model.json"))
-  .then(res => res.json())
-  .then(data => {
-    rfForest = data;
-    console.log("✅ Random Forest model loaded:", rfForest.length, "trees");
-  })
-  .catch(err => console.error("❌ Failed to load model:", err));
-
-function evalTree(tree, features) {
-  if ("value" in tree) return tree.value[1] > tree.value[0] ? 1 : 0;
-  const val = features[tree.feature];
-  if (val === undefined) {
-    throw new Error(`Missing feature: ${tree.feature}`);
+// Load ONNX model once when background starts
+(async () => {
+  try {
+    session = await loadModel();
+    console.log("✅ ONNX model loaded");
+  } catch (e) {
+    console.error("❌ Failed to load ONNX model", e);
   }
-  return val <= tree.threshold
-    ? evalTree(tree.left, features)
-    : evalTree(tree.right, features);
+})();
+
+// Helper: Convert feature object to ONNX tensor
+function makeTensor(features) {
+  const inputArray = Float32Array.from([
+    features.url_length,
+    features.dot_count,
+    features.subdomain_length,
+    features.entropy,
+  ]);
+  return new ort.Tensor("float32", inputArray, [1, 4]);
 }
 
-function predictForest(features) {
-  console.log("📦 Received features for prediction:", features);
-  const votes = rfForest.map(tree => evalTree(tree, features));
-  const sum = votes.reduce((a,b)=>a+b,0);
-  console.log("sum, avg:", sum, sum / rfForest.length);
-  return sum / rfForest.length;
-}
-
-chrome.runtime.onMessage.addListener((req, sender, sendResponse) => {
-  console.log("📩 Background received a message:", req);
-
-  if (req.action === "PredictForest") {
-    console.log("📬 Handling PredictForest");
-
-    if (!rfForest) {
-      console.warn("⛔ Model not ready");
+// Listen for messages from content-script and popup
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  if (msg.action === "PredictForest" && sender.tab?.id) {
+    if (!session) {
       sendResponse({ error: "Model not ready" });
       return true;
     }
 
-    try {
-      const prob = predictForest(req.features);
-      const isPhish = prob >= rfThreshold;
-      cache[sender.tab.id] = { probability: prob, isPhishing: isPhish };
-      console.log("📈 Prediction result:", { probability: prob, isPhish });
-      sendResponse({ probability: prob, isPhishing: isPhish });
+    (async () => {
+      try {
+        const inputName = session.inputNames[0];
+        const outputName = session.outputNames[1]; // e.g. output_probability
+        const tensor = makeTensor(msg.features);
+        const results = await session.run({ [inputName]: tensor });
 
-    } catch (err) {
-      console.error("❌ Prediction error:", err.message);
-      sendResponse({ error: err.message });
-    }
+        const proba = results[outputName].data[1]; // p(class=1)
+        const isPhish = proba >= rfThreshold;
 
-    return true; // IMPORTANT for async sendResponse
+        // Cache for popup
+        cache[sender.tab.id] = { probability: proba, isPhishing: isPhish };
+        console.log(`🧠 Prediction for tab ${sender.tab.id}:`, cache[sender.tab.id]);
+
+        sendResponse({ probability: proba, isPhishing: isPhish });
+      } catch (err) {
+        console.error("❌ Prediction error:", err);
+        sendResponse({ error: err.message });
+      }
+    })();
+
+    return true; // Async
   }
 
-  if (req.action === "GetPrediction") {
-    console.log("📤 Popup requested latest prediction");
-    const res = cache[req.tabId];
-    sendResponse(res || { error: "No prediction available yet" });
+  if (msg.action === "GetStoredPrediction" && msg.tabId) {
+    const res = cache[msg.tabId];
+    console.log(`📤 Returning cached prediction for tab ${msg.tabId}:`, res);
+    sendResponse(res || { error: "No prediction yet" });
     return false;
   }
 });

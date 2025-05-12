@@ -6,7 +6,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // send your GetPrediction to the background, including tabId
     chrome.runtime.sendMessage(
-      { action: 'GetPrediction', tabId },
+      { action: 'GetStoredPrediction', tabId },
       (response) => {
         const resultEl = document.getElementById('result');
 
