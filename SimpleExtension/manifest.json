@@ -19,7 +19,8 @@
     ],
     "web_accessible_resources": [
     {
-      "resources": ["rf_model.json"],
+      "resources": ["rf_model.onnx",
+    "ort-wasm.wasm","ort.min.js"],
       "matches": ["<all_urls>"]
     }
     ]
