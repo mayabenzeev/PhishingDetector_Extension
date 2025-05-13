@@ -19,7 +19,7 @@
     ],
     "web_accessible_resources": [
     {
-      "resources": ["rf_model.json"],
+      "resources": ["rf_model.onnx"],
       "matches": ["<all_urls>"]
     }
     ]
