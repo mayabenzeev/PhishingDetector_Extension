@@ -8,7 +8,8 @@
       "default_popup": "popup.html"
     },
     "background": {
-      "service_worker": "background.js"
+      "service_worker": "background.js",
+      "type": "module"
     },
     "content_scripts": [
       {
@@ -16,13 +17,6 @@
         "js": ["content-script.js"],
         "run_at": "document_idle"
       }
-    ],
-    "web_accessible_resources": [
-    {
-      "resources": ["rf_model.onnx",
-    "ort-wasm.wasm","ort.min.js"],
-      "matches": ["<all_urls>"]
-    }
     ]
   }
   
