@@ -6,7 +6,7 @@
     const hostname = new URL(url).hostname;
 
     const url_length = url.length;
-    const dot_count = hostname.split('.').length;
+    const dot_count = (hostname.match(/\./g) || []).length;
 
     const subdomain_length = (() => {
       const parts = hostname.split('.');
@@ -25,9 +25,11 @@
       }, 0);
     })();
 
-    const pageLoadTime = performance.timing.loadEventEnd && performance.timing.navigationStart
-      ? performance.timing.loadEventEnd - performance.timing.navigationStart
-      : 0;
+    const pageLoadTime = (() => {
+  const nav = performance.getEntriesByType('navigation')[0];
+  return nav ? performance.now() - nav.domContentLoadedEventEnd : 0;
+})();
+
 
     const eventListenerCount = (() => {
       let total = 0;
@@ -45,17 +47,18 @@
       : 0;
 
     return {
-      url_length,
-      entropy,
-      subdomain_length,
-      pageLoadTime,
-      dot_count,
-      eventListenerCount,
-      memoryUsed
-    };
+        url_length: parseFloat(url_length),
+        entropy: parseFloat(entropy),
+        dot_count: parseFloat(dot_count),
+        subdomain_length: parseFloat(subdomain_length),
+        pageLoadTime: parseFloat(pageLoadTime),
+        eventListenerCount: parseFloat(eventListenerCount),
+        memoryUsed: parseFloat(memoryUsed)
+      };
+
   }
 
   const features = extractFeaturesFromPage();
-
+  console.log("📤 Sending PredictForest from content script:", features);
   chrome.runtime.sendMessage({ action: "PredictForest", features });
 })();

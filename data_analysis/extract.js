@@ -159,7 +159,7 @@ async function extractDynamicFeatures(page) {
   const perf = await safeEvaluate(page, () => {
     const nav = performance.getEntriesByType('navigation')[0];
     return {
-      cpuTime: Math.round(performance.now() - nav.domContentLoadedEventEnd),
+      cpuTime: performance.now() - nav.domContentLoadedEventEnd,
       memoryUsed: performance.memory?.usedJSHeapSize || 0
     };
   });

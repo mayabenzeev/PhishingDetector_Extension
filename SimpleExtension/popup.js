@@ -5,6 +5,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const tabId = tabs[0].id;
 
     // send your GetPrediction to the background, including tabId
+    console.log("📦 Popup requesting prediction for tab:", tabId);
     chrome.runtime.sendMessage(
       { action: 'GetStoredPrediction', tabId },
       (response) => {
