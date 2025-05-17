@@ -25,7 +25,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     console.log("📡 Received features for prediction:");
     console.log("🌐 URL:", sender.tab?.url || "(no URL)");
     console.log("🧮 Features:", msg.features);
-    console.log(`🔍 Predicted Probability: ${probability}`);
+    console.log(`🔍 Phishing Probability: ${probability[1]}`);
+    console.log(`🔍 Benign Probability: ${probability[0]}`);
     console.log(`🚨 Classified as Phishing: ${isPhishing}`);
 
     sendResponse({ probability, isPhishing });
