@@ -8,7 +8,7 @@ import os
 
 # Config
 TRANCOPATH = os.path.join(os.getcwd(), "datasets/benign.csv")  # Path to Tranco file
-MAX_URLS = 10000
+MAX_URLS = 5000
 MAX_LINKS_PER_DOMAIN = 5
 DELAY = 0.3
 TIMEOUT = 5
@@ -20,7 +20,7 @@ def strip_scheme(domain):
 
 # Load Tranco list and select ranks 1001–10,000
 tranco_df = pd.read_csv(TRANCOPATH, header=None)
-top_sites = tranco_df[1].dropna().iloc[1000:10000].apply(strip_scheme).tolist()
+top_sites = tranco_df[1].dropna().iloc[10000:20000].apply(strip_scheme).tolist()
 
 # Extract internal links from domain
 def extract_internal_urls(domain, max_links=10):
