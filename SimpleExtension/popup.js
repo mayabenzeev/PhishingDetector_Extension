@@ -5,15 +5,21 @@ document.addEventListener('DOMContentLoaded', () => {
     const tabId = tabs[0].id;
 
     // send your GetPrediction to the background, including tabId
+    console.log("Popup requesting prediction for tab:", tabId);
     chrome.runtime.sendMessage(
       { action: 'GetStoredPrediction', tabId },
       (response) => {
         const resultEl = document.getElementById('result');
+        if (chrome.runtime.lastError) {
+          console.warn('chrome.runtime.lastError:', chrome.runtime.lastError.message);
+          resultEl.textContent = 'Extension error.';
+          return;
+        }
 
-        if (chrome.runtime.lastError || !response || response.error) {
-          console.warn('chrome.runtime.lastError:', chrome.runtime.lastError);
-          console.warn('response:', response);
-          resultEl.textContent = 'Error retrieving classification.';
+        if (!response || response.error) {
+          console.warn("Prediction not available:", response?.error || "(no response)");
+          resultEl.textContent = 'Prediction not available.';
+          // resultEl.textContent = 'Error retrieving classification.';
           return;
         }
 

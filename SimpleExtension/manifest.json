@@ -3,12 +3,13 @@
     "version": "1.0",
     "manifest_version": 3,
     "description": "Detects potential phishing pages based on URL and HTML content.",
-    "permissions": ["tabs", "activeTab", "scripting"],
+    "permissions": ["tabs", "activeTab", "scripting", "webNavigation"],
     "action": {
       "default_popup": "popup.html"
     },
     "background": {
-      "service_worker": "background.js"
+      "service_worker": "background.js",
+      "type": "module"
     },
     "content_scripts": [
       {
@@ -16,12 +17,6 @@
         "js": ["content-script.js"],
         "run_at": "document_idle"
       }
-    ],
-    "web_accessible_resources": [
-    {
-      "resources": ["rf_model.onnx"],
-      "matches": ["<all_urls>"]
-    }
     ]
   }
   
